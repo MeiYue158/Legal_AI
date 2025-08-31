@@ -2,7 +2,7 @@ from typing import List, Dict, Optional, Union
 import os
 import logging
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 from app.utils.pdf_parser import extract_text
 from app.utils.clause_split import split_into_clauses
@@ -29,15 +29,21 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class UnfairDetectionResult:
-    """Container for unfair clause detection results."""
+    """
+    Container for unfair clause detection results.
     
-    def __init__(self, file_path: str, total_clauses: int, unfair_clauses: List[UnfairClause], 
-                 model_info: Dict, processing_time: float = 0.0):
+    Note: unfair_clauses are stored as dicts (serialized dataclass or enriched dict)
+    to ensure JSON-friendly output and consistent API.
+    """
+    
+    def __init__(self, file_path: str, total_clauses: int, unfair_clauses: List[Dict], 
+                 model_info: Dict, processing_time: float = 0.0, all_predictions: Optional[List[Dict]] = None):
         self.file_path = file_path
         self.total_clauses = total_clauses
-        self.unfair_clauses = unfair_clauses
+        self.unfair_clauses = unfair_clauses  # Now List[Dict] instead of List[UnfairClause]
         self.model_info = model_info
         self.processing_time = processing_time
+        self.all_predictions = all_predictions or []
         
     def get_summary(self) -> Dict:
         """Get a summary of the detection results."""
@@ -52,31 +58,32 @@ class UnfairDetectionResult:
     
     def get_unfair_by_confidence(self, min_confidence: float = 0.8) -> List[Dict]:
         """Get unfair clauses above a specific confidence threshold."""
-        return [clause for clause in self.unfair_clauses 
-                if clause["confidence"] >= min_confidence]
+        return [c for c in self.unfair_clauses if c.get("confidence", 0.0) >= min_confidence]
     
     def get_unfair_by_category(self) -> Dict[str, List[Dict]]:
         """Group unfair clauses by category."""
         categories = {}
-        for clause in self.unfair_clauses:
-            category = clause.get("category", "unknown")
-            if category not in categories:
-                categories[category] = []
-            categories[category].append(clause)
+        for c in self.unfair_clauses:
+            # Prefer "category" if present (from format_unfair_result), otherwise fall back to "clause_type"
+            cat = c.get("category") or c.get("clause_type") or "unknown"
+            categories.setdefault(cat, []).append(c)
         return categories
     
     def get_processed_results(self) -> List[Dict]:
         """Get unfair clauses with normalized labels and explanations."""
         processed = []
-        for clause in self.unfair_clauses:
+        for c in self.unfair_clauses:
             try:
                 # Apply label normalization and formatting
-                formatted = format_unfair_result(clause)
-                processed.append(formatted)
-            except:
-                # Fallback for compatibility
-                processed.append(clause)
+                processed.append(format_unfair_result(c))
+            except Exception as e:
+                logger.warning(f"format_unfair_result failed: {e}")
+                processed.append(c)
         return processed
+    
+    def get_all_predictions(self) -> List[Dict]:
+        """Get all model predictions (both fair and unfair clauses)."""
+        return self.all_predictions
 
 def run_unfair_pipeline(
     file_path: str,
@@ -130,7 +137,7 @@ def run_unfair_pipeline(
             return UnfairDetectionResult(
                 file_path=file_path,
                 total_clauses=0,
-                unfair_clauses=[],  # Empty list of UnfairClause objects
+                unfair_clauses=[],  # Empty list of dicts
                 model_info={"model_name": "none"},
                 processing_time=time.time() - start_time
             )
@@ -173,7 +180,8 @@ def run_unfair_pipeline(
                         start_position=0,
                         end_position=len(pred.get("clause", ""))
                     )
-                    unfair_clauses.append(unfair_clause)
+                    # Convert to dict before appending
+                    unfair_clauses.append(asdict(unfair_clause))
                 except Exception as e:
                     logger.warning(f"Error processing clause {i}: {e}")
                     # Fallback UnfairClause with basic explanation
@@ -187,7 +195,8 @@ def run_unfair_pipeline(
                         start_position=0,
                         end_position=len(pred.get("clause", ""))
                     )
-                    unfair_clauses.append(unfair_clause)
+                    # Convert to dict before appending
+                    unfair_clauses.append(asdict(unfair_clause))
         
         processing_time = time.time() - start_time
         
@@ -197,9 +206,10 @@ def run_unfair_pipeline(
         return UnfairDetectionResult(
             file_path=file_path,
             total_clauses=len(clauses),
-            unfair_clauses=unfair_clauses,
+            unfair_clauses=unfair_clauses,  # Now List[Dict]
             model_info=model_info,
-            processing_time=processing_time
+            processing_time=processing_time,
+            all_predictions=predictions  # Include all predictions for parity with text pipeline
         )
         
     except Exception as e:

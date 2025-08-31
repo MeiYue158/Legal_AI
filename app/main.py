@@ -8,12 +8,21 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 # Add project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.components.contract_upload import ContractUploadComponent
+# Import authentication module
+from app.auth import init_db
+
+# Import page functions
+from app.pages.register import register_page
+from app.pages.login import login_page
+from app.pages.menu import menu_page
+from app.pages.analysis_simple import analysis_simple_page  # Use simplified version
+from app.pages.legal_summary import legal_summary_page
+from app.pages.appeal_analysis import appeal_analysis_page
 
 # Page configuration
 st.set_page_config(
-    page_title="Contract Analysis - Unfair Clause Detection",
-    page_icon="📄",
+    page_title="Legal AI Deep Research",
+    page_icon="⚖️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -111,82 +120,113 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# App title
-st.title("📄 Contract Analysis - Unfair Clause Detection")
-st.markdown(
-    """
-    **Advanced contract analysis system using LexGLUE methodology for detecting potentially unfair clauses.**
-    
-    Upload contract documents (PDF, DOCX, TXT) or paste text directly to identify and analyze potentially unfair terms using state-of-the-art NLP models.
-    """
-)
+# Initialize database on first load
+if "db_initialized" not in st.session_state:
+    try:
+        init_db()
+        st.session_state["db_initialized"] = True
+    except Exception as e:
+        st.error(f"Failed to initialize database: {e}")
+        st.stop()
 
-# Simple sidebar with information
+# Navigation helper
+def go(route: str):
+    """Navigate to a specific route."""
+    st.session_state["route"] = route
+    st.experimental_rerun()
+
+# Route definitions
+ROUTES = {
+    "register": register_page,
+    "login": login_page,
+    "menu": menu_page,
+    "analysis": analysis_simple_page,  # Use simplified version
+    "legal_summary": legal_summary_page,
+    "appeal_analysis": appeal_analysis_page
+}
+
+# Sidebar
 with st.sidebar:
-    st.markdown("## 📄 Contract Analysis")
+    st.markdown("## ⚖️ Legal AI Deep Research")
+    
+    # Check authentication status
+    user = st.session_state.get("user")
+    
+    if user:
+        st.markdown(f"**Welcome, {user['username']}!**")
+        st.markdown(f"*{user['email']}*")
+        st.markdown("---")
+        
+        # Logout button
+        if st.button("🚪 Logout", type="secondary", use_container_width=True):
+            # Clear session and redirect to login
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.session_state["route"] = "login"
+            st.experimental_rerun()
+        
+        st.markdown("---")
+        st.markdown("**Quick Navigation:**")
+        
+        if st.button("🏠 Menu", key="sidebar_menu"):
+            go("menu")
+        
+        if st.button("🚨 Analysis", key="sidebar_analysis"):
+            go("analysis")
+            
+    else:
+        st.markdown("**Please log in to access features**")
+        st.markdown("---")
+        
+        if st.button("🔐 Login", key="sidebar_login"):
+            go("login")
+        
+        if st.button("📝 Register", key="sidebar_register"):
+            go("register")
+    
+    st.markdown("---")
+    st.markdown("### 📚 Features")
     st.markdown("""
-    **Features:**
-    - Pattern-based detection
-    - ML-based classification  
-    - Risk assessment
-    - Detailed recommendations
-    - Export capabilities
-    
-    **Supported formats:**
-    - PDF, DOCX, DOC, TXT
-    - Direct text input
+    - **Legal Summarization** - Coming Soon
+    - **Appeal Analysis** - Coming Soon  
+    - **Unfair Clause Detection** - Available (Simplified)
     """)
     
     st.markdown("---")
-    st.markdown("### ⚙️ Settings")
-    
-    # Contract analysis settings
-    confidence_threshold = st.slider(
-        "Confidence Threshold",
-        min_value=0.1,
-        max_value=0.9,
-        value=0.3,
-        step=0.1,
-        help="Minimum confidence for clause detection"
-    )
-    
-    analysis_method = st.selectbox(
-        "Analysis Method",
-        ["Both (Pattern + ML)", "Pattern Only", "ML Only"],
-        index=0,
-        help="Choose detection method"
-    )
-    
-    st.markdown("---")
-    st.markdown("### 📊 About")
+    st.markdown("### ⚙️ About")
     st.info("""
-    This system uses:
-    - **LexGLUE UNFAIR-ToS** models
-    - **Pattern-based** detection
-    - **Risk assessment** algorithms
-    - **Comprehensive** reporting
+    Advanced legal AI system for:
+    - Contract analysis
+    - Legal document processing
+    - AI-powered legal insights
     """)
 
-# Main contract analysis interface
-st.markdown("## Upload and Analyze Contracts")
+# Main routing logic
+def main():
+    """Main routing function."""
+    # Get current route and user status
+    route = st.session_state.get("route")
+    user = st.session_state.get("user")
+    
+    # Route protection: redirect to login if not authenticated
+    if not user and route not in ("login", "register"):
+        route = "login"
+    
+    # Default route logic
+    if not route:
+        route = "menu" if user else "login"
+    
+    # Get the page function
+    page_fn = ROUTES.get(route, login_page)
+    
+    # Render the page
+    try:
+        page_fn()
+    except Exception as e:
+        st.error(f"Error rendering page: {e}")
+        st.info("Redirecting to login page...")
+        go("login")
 
-# Import the contract analysis UI component
-from app.components.contract_analysis_ui import ContractAnalysisUI
-
-# Render the contract analysis interface
-ContractAnalysisUI.render_pipeline_upload()
-
-# Footer
-st.markdown("---")
-st.markdown(
-    """
-    <div style="text-align: center; color: #888; margin-top: 2rem;">
-        <p><strong>⚠️ Legal Disclaimer:</strong> This system is for informational purposes only and does not constitute legal advice.</p>
-        <p>Built with Streamlit, Transformers, and spaCy | For personal, non-commercial use only</p>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
+# Run the main function
 if __name__ == "__main__":
-    pass
+    main()
