@@ -33,7 +33,7 @@ def login_page():
                 st.session_state["route"] = "menu"
                 
                 # Auto-redirect to menu
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error(message)
     
@@ -42,4 +42,4 @@ def login_page():
     st.markdown("Don't have an account?")
     if st.button("Create Account", key="register_link"):
         st.session_state["route"] = "register"
-        st.experimental_rerun()
+        st.rerun()

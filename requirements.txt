@@ -32,3 +32,19 @@ jinja2>=3.1.0
 # Authentication
 bcrypt>=4.0.0
 
+# Experiment infrastructure (Phase 0/1: Postgres backend, corpus + retrieval)
+psycopg2-binary>=2.9.9
+datasets>=2.19.0
+faiss-cpu>=1.8.0
+huggingface-hub>=0.23.0
+
+# LLM generation (Phase 2: citation generation + RAG eval)
+openai>=1.0.0
+
+# AI backend REST API (Phase 3: React + Express + FastAPI split)
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+
+# Hybrid retrieval + evidence balancing (Phase 2: RAG eval)
+rank_bm25>=0.2.2
+

@@ -18,6 +18,7 @@ from app.pages.menu import menu_page
 from app.pages.analysis_simple import analysis_simple_page  # Use simplified version
 from app.pages.legal_summary import legal_summary_page
 from app.pages.appeal_analysis import appeal_analysis_page
+from app.pages.case_research import case_research_page
 
 # Page configuration
 st.set_page_config(
@@ -133,7 +134,7 @@ if "db_initialized" not in st.session_state:
 def go(route: str):
     """Navigate to a specific route."""
     st.session_state["route"] = route
-    st.experimental_rerun()
+    st.rerun()
 
 # Route definitions
 ROUTES = {
@@ -142,7 +143,8 @@ ROUTES = {
     "menu": menu_page,
     "analysis": analysis_simple_page,  # Use simplified version
     "legal_summary": legal_summary_page,
-    "appeal_analysis": appeal_analysis_page
+    "appeal_analysis": appeal_analysis_page,
+    "case_research": case_research_page
 }
 
 # Sidebar
@@ -163,7 +165,7 @@ with st.sidebar:
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.session_state["route"] = "login"
-            st.experimental_rerun()
+            st.rerun()
         
         st.markdown("---")
         st.markdown("**Quick Navigation:**")

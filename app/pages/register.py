@@ -17,7 +17,15 @@ def register_page():
         email = st.text_input("Email", placeholder="Enter your email address")
         password = st.text_input("Password", type="password", placeholder="Enter your password")
         confirm_password = st.text_input("Confirm Password", type="password", placeholder="Confirm your password")
-        
+
+        # Collected for stratified randomization + heterogeneous-effect analysis
+        # (law vs non-law) in the citation-highlighting experiment.
+        expertise_choice = st.radio(
+            "Do you have a legal background (law student, paralegal, attorney, etc.)?",
+            options=["Yes", "No"],
+            horizontal=True,
+        )
+
         submit_button = st.form_submit_button("Create Account", type="primary")
         
         if submit_button:
@@ -45,7 +53,8 @@ def register_page():
                 return
             
             # Create user
-            success, message = create_user(username, email, password)
+            legal_expertise = "law" if expertise_choice == "Yes" else "non_law"
+            success, message = create_user(username, email, password, legal_expertise)
             
             if success:
                 st.success(message)
@@ -54,7 +63,7 @@ def register_page():
                 # Navigation button
                 if st.button("Go to Login", type="secondary"):
                     st.session_state["route"] = "login"
-                    st.experimental_rerun()
+                    st.rerun()
             else:
                 st.error(message)
     
@@ -63,4 +72,4 @@ def register_page():
     st.markdown("Already have an account?")
     if st.button("Go to Login", key="login_link"):
         st.session_state["route"] = "login"
-        st.experimental_rerun()
+        st.rerun()

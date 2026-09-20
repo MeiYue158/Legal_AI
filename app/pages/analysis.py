@@ -12,7 +12,7 @@ def analysis_page():
     if "user" not in st.session_state:
         st.error("Please log in to access the analysis.")
         st.session_state["route"] = "login"
-        st.experimental_rerun()
+        st.rerun()
         return
     
     user = st.session_state["user"]
@@ -25,7 +25,7 @@ def analysis_page():
     # Back to menu button
     if st.button("← Back to Menu", key="back_to_menu"):
         st.session_state["route"] = "menu"
-        st.experimental_rerun()
+        st.rerun()
     
     st.markdown("---")
     
@@ -43,8 +43,8 @@ def analysis_page():
     with col1:
         if st.button("← Back to Menu", key="back_to_menu_bottom"):
             st.session_state["route"] = "menu"
-            st.experimental_rerun()
+            st.rerun()
     
     with col2:
         if st.button("🔄 Refresh Analysis", key="refresh_analysis"):
-            st.experimental_rerun()
+            st.rerun()

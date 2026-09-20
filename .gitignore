@@ -42,3 +42,13 @@ test_*.py
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Downloaded corpus + built retrieval index (large, regenerable via scripts/)
+data/corpus_raw/
+data/index/
+auth.db
+
+# Node (server/, frontend/)
+node_modules/
+dist/
+*.tsbuildinfo
