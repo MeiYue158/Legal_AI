@@ -48,3 +48,8 @@ uvicorn[standard]>=0.29.0
 # Hybrid retrieval + evidence balancing (Phase 2: RAG eval)
 rank_bm25>=0.2.2
 
+# MCP server exposing citation verification to MCP clients (app/mcp/)
+mcp>=2.0.0
+
+# Tests
+pytest>=8.0.0

@@ -6,20 +6,27 @@ each claim quotes the exact passage it relied on. Quotes are then verified
 against the source text: an exact (whitespace-tolerant) substring match
 locates the real span. When the model paraphrases instead of quoting
 verbatim — a known LLM failure mode — we fall back to the similarity
-heuristic in app.rag.retriever.find_evidence_span rather than showing an
+heuristic in app.rag.verify.find_evidence_span rather than showing an
 unverified claim as if it were a real quote.
+
+The matching and rendering primitives themselves live in app.rag.verify,
+which depends on neither FAISS nor the database; this module adds the
+OpenAI call and the retrieved-case plumbing around them.
 """
 
-import html
-import os
-import re
-from typing import List, Optional, Tuple, TypedDict
+from typing import List, Optional, TypedDict
 
 from dotenv import load_dotenv
 from openai import OpenAI
 from pydantic import BaseModel
 
-from app.rag.retriever import RetrievedCase, find_evidence_span
+from app.rag.retriever import RetrievedCase
+from app.rag.verify import (  # noqa: F401  (render_citations_html re-exported for callers)
+    VerifiedCitation,
+    find_evidence_span,
+    locate_quote as _locate_quote,
+    render_citations_html,
+)
 
 load_dotenv()
 
@@ -37,13 +44,6 @@ class _GeneratedAnswer(BaseModel):
     citations: List[_Citation]
 
 
-class VerifiedCitation(TypedDict):
-    case_id: str
-    quote: str
-    span: Optional[Tuple[int, int]]
-    verified: bool  # True = exact quote found in case_text; False = fallback used
-
-
 class GenerationResult(TypedDict):
     answer: str
     citations: List[VerifiedCitation]
@@ -57,25 +57,6 @@ def _get_client() -> OpenAI:
     if _client is None:
         _client = OpenAI()
     return _client
-
-
-def _locate_quote(case_text: str, quote: str) -> Optional[Tuple[int, int]]:
-    """Find quote in case_text. Exact match first, then whitespace-tolerant
-    (LLMs often collapse newlines/multiple spaces when quoting)."""
-    quote = quote.strip()
-    if not quote:
-        return None
-
-    idx = case_text.find(quote)
-    if idx != -1:
-        return (idx, idx + len(quote))
-
-    tokens = quote.split()
-    if not tokens:
-        return None
-    pattern = r"\s+".join(re.escape(tok) for tok in tokens)
-    m = re.search(pattern, case_text)
-    return m.span() if m else None
 
 
 def generate_answer(query: str, cases: List[RetrievedCase]) -> GenerationResult:
@@ -138,32 +119,3 @@ def generate_answer(query: str, cases: List[RetrievedCase]) -> GenerationResult:
             })
 
     return {"answer": parsed.answer, "citations": verified}
-
-
-def render_citations_html(case_text: str, citations: List[VerifiedCitation]) -> str:
-    """Render case_text as HTML with every citation's span highlighted —
-    green for a verified verbatim quote, orange for a heuristic fallback
-    match. Citations without a locatable span are skipped."""
-    spans = sorted(
-        ((c["span"], c["verified"]) for c in citations if c["span"] is not None),
-        key=lambda item: item[0][0],
-    )
-    if not spans:
-        return html.escape(case_text)
-
-    pieces = []
-    cursor = 0
-    for (start, end), verified in spans:
-        if start < cursor:
-            continue  # overlapping citation spans — keep the first
-        color = "#c8e6c9" if verified else "#ffe0b2"
-        title = "exact quote, verified against source text" if verified else \
-            "model's quote did not match the source verbatim — showing closest matching sentence instead"
-        pieces.append(html.escape(case_text[cursor:start]))
-        pieces.append(
-            f'<mark style="background-color:{color};" title="{title}">'
-            f'{html.escape(case_text[start:end])}</mark>'
-        )
-        cursor = end
-    pieces.append(html.escape(case_text[cursor:]))
-    return "".join(pieces)

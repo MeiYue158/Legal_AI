@@ -7,7 +7,6 @@ project's own priority table, retrieval architecture is not where the
 engineering effort should go; the citation-highlight UI (Phase 2) is.
 """
 
-import html
 import json
 import os
 import re
@@ -15,17 +14,25 @@ from functools import lru_cache
 from typing import List, Tuple, TypedDict
 
 import faiss
-import nltk
 import numpy as np
 from rank_bm25 import BM25Okapi
-from sentence_transformers import SentenceTransformer
 
 from app.db.connection import get_connection
+
+# Evidence highlighting lives in app.rag.verify, which stays free of FAISS
+# and psycopg2 so the MCP server can use it on arbitrary documents. These
+# are re-exported here because callers (app.api.main, app.pages.case_research)
+# have always imported them from this module.
+from app.rag.verify import (  # noqa: F401  (re-exported for callers)
+    MODEL_NAME,
+    find_evidence_span,
+    highlight_evidence_html,
+    load_model as _load_model,
+)
 
 INDEX_DIR = os.path.join("data", "index")
 INDEX_PATH = os.path.join(INDEX_DIR, "cap_cases.faiss")
 IDS_PATH = os.path.join(INDEX_DIR, "cap_case_ids.json")
-MODEL_NAME = "all-MiniLM-L6-v2"
 
 
 class RetrievedCase(TypedDict):
@@ -46,82 +53,6 @@ def _load_index():
     with open(IDS_PATH) as f:
         case_ids = json.load(f)
     return index, case_ids
-
-
-@lru_cache(maxsize=1)
-def _load_model():
-    return SentenceTransformer(MODEL_NAME)
-
-
-def _ensure_punkt() -> None:
-    for resource in ("punkt", "punkt_tab"):
-        try:
-            nltk.data.find(f"tokenizers/{resource}")
-        except LookupError:
-            nltk.download(resource)
-
-
-@lru_cache(maxsize=1)
-def _sentence_tokenizer():
-    _ensure_punkt()
-    return nltk.data.load("tokenizers/punkt/english.pickle")
-
-
-def find_evidence_span(case_text: str, claim: str, top_n: int = 1) -> List[Tuple[int, int]]:
-    """
-    Locate which sentence(s) in case_text most likely support `claim` (the
-    AI-generated statement this case was cited for), by embedding cosine
-    similarity against the same SentenceTransformer used for retrieval.
-
-    This is the "evidence highlighting" span-selection step: given a case
-    was already retrieved/cited, decide *where within it* to highlight.
-    Heuristic, not exact — good enough to point a user at the right
-    sentence(s) rather than the whole opinion.
-
-    Returns (start, end) character offsets into case_text, in reading
-    order (not score order), so callers can highlight in place.
-    """
-    if not case_text or not claim:
-        return []
-
-    spans = list(_sentence_tokenizer().span_tokenize(case_text))
-    if not spans:
-        return []
-
-    sentences = [case_text[start:end] for start, end in spans]
-    model = _load_model()
-    embeddings = model.encode(sentences + [claim], normalize_embeddings=True)
-    sentence_vecs, claim_vec = embeddings[:-1], embeddings[-1]
-
-    scores = sentence_vecs @ claim_vec
-    top_n = max(1, min(top_n, len(spans)))
-    top_indices = sorted(np.argsort(scores)[-top_n:].tolist())
-    return [spans[i] for i in top_indices]
-
-
-def highlight_evidence_html(case_text: str, claim: str, top_n: int = 1) -> str:
-    """
-    Render case_text as HTML with the sentence(s) supporting `claim`
-    wrapped in <mark>, for st.markdown(html, unsafe_allow_html=True).
-
-    case_text is corpus data, not trusted input, so everything outside
-    the <mark> tags is HTML-escaped before assembly.
-    """
-    spans = find_evidence_span(case_text, claim, top_n=top_n)
-    if not spans:
-        return html.escape(case_text)
-
-    pieces = []
-    cursor = 0
-    for start, end in spans:
-        pieces.append(html.escape(case_text[cursor:start]))
-        pieces.append(
-            '<mark style="background-color:#fff59d;">'
-            f'{html.escape(case_text[start:end])}</mark>'
-        )
-        cursor = end
-    pieces.append(html.escape(case_text[cursor:]))
-    return "".join(pieces)
 
 
 def _fetch_cases_by_id(case_ids: List[str]) -> dict:

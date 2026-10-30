@@ -32,7 +32,8 @@ __pycache__/
 run.sh
 setup*.sh
 debug*.py
-test_*.py
+# Ad-hoc test scripts at the repo root only — the tests/ package is tracked.
+/test_*.py
 
 # OS files
 .DS_Store
