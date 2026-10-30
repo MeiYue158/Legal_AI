@@ -58,3 +58,21 @@ dist/
 .env.bak*
 .env.*.bak
 *.env.backup
+
+# Test + tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Quarto: keep the .qmd source, ignore everything rendering produces
+/.quarto/
+*_files/
+docs/*.html
+docs/*.pdf
+docs/*.docx
+!docs/*.qmd
+
+# Local scratch
+*.local.*
+scratch/
+notes.local.md
