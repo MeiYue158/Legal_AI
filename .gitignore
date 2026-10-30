@@ -52,3 +52,8 @@ auth.db
 node_modules/
 dist/
 *.tsbuildinfo
+
+# .env 备份与变体（含密钥，永不入库）
+.env.bak*
+.env.*.bak
+*.env.backup
