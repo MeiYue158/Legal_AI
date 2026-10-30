@@ -16,8 +16,20 @@ corpus (app.rag.retriever.retrieve). Two highlighting modes:
 
 import streamlit as st
 
+from app.rag.balance import retrieve_balanced
 from app.rag.generate import generate_answer, render_citations_html
-from app.rag.retriever import highlight_evidence_html, retrieve
+from app.rag.retriever import highlight_evidence_html, retrieve, retrieve_hybrid
+from app.rag.stance_retrieval import retrieve_stance_aware
+
+# (function, score label, LLM calls per query) — mirrors app/api/main.py.
+# Only `dense` returns a cosine similarity; the rest return RRF fusion
+# scores, which rank correctly but must not be shown as similarities.
+STRATEGIES = {
+    "Dense (vector only)": (retrieve, "similarity", 0),
+    "Hybrid (dense + BM25)": (retrieve_hybrid, "fusion rank score", 0),
+    "Balanced (adverse-aware)": (retrieve_balanced, "fusion rank score", 1),
+    "Stance-aware (widest pool)": (retrieve_stance_aware, "fusion rank score", 2),
+}
 
 
 def case_research_page():
@@ -45,6 +57,14 @@ def case_research_page():
         placeholder="e.g. Can a landlord terminate a lease without notice for late rent?",
         height=100,
     )
+    strategy_name = st.selectbox("Retrieval strategy", list(STRATEGIES.keys()))
+    retrieve_fn, score_label, llm_calls = STRATEGIES[strategy_name]
+    if llm_calls:
+        st.caption(
+            f"⚠️ Makes {llm_calls} OpenAI call{'s' if llm_calls > 1 else ''} per search "
+            "(stance classification / query rewriting) — costs credits and is noticeably slower."
+        )
+
     top_k = st.slider("Number of cases to retrieve", min_value=1, max_value=10, value=5)
     use_llm = st.checkbox(
         "🤖 Generate an LLM answer with verified citations (calls OpenAI API — costs credits)",
@@ -56,11 +76,14 @@ def case_research_page():
             st.error("Please enter a query.")
             return
 
-        with st.spinner("Retrieving cases..."):
+        with st.spinner(f"Retrieving cases ({strategy_name})..."):
             try:
-                results = retrieve(query, k=top_k)
+                results = retrieve_fn(query, k=top_k)
             except FileNotFoundError as e:
                 st.error(f"Retrieval index not available: {e}")
+                return
+            except Exception as e:
+                st.error(f"Retrieval failed ({strategy_name}): {e}")
                 return
 
         if not results:
@@ -90,9 +113,12 @@ def case_research_page():
                 st.markdown("---")
 
         for i, case in enumerate(results, 1):
+            score_text = (
+                f"{case['score']:.2f}" if score_label == "similarity" else f"{case['score']:.4f}"
+            )
             with st.expander(
                 f"{i}. {case['case_name']} — {case['citation']} "
-                f"(similarity: {case['score']:.2f})",
+                f"({score_label}: {score_text})",
                 expanded=(i == 1),
             ):
                 case_citations = citations_by_case.get(case["case_id"])

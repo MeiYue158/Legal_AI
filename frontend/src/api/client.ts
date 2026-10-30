@@ -80,16 +80,58 @@ export interface CaseResult {
   verified: boolean | null;
 }
 
+export type RetrievalStrategy = "dense" | "hybrid" | "balanced" | "stance_aware";
+
+export interface StrategyInfo {
+  label: string;
+  blurb: string;
+  /** Number of OpenAI calls this strategy makes per query, before any answer generation. */
+  llmCalls: number;
+}
+
+export const STRATEGIES: Record<RetrievalStrategy, StrategyInfo> = {
+  dense: {
+    label: "Dense (vector only)",
+    blurb: "Embedding similarity alone. Fastest, free.",
+    llmCalls: 0,
+  },
+  hybrid: {
+    label: "Hybrid (dense + BM25)",
+    blurb: "Fuses vector and keyword rankings via Reciprocal Rank Fusion. Free.",
+    llmCalls: 0,
+  },
+  balanced: {
+    label: "Balanced (adverse-aware)",
+    blurb:
+      "Hybrid pool, then an LLM labels each case favorable/adverse and promotes adverse ones into the top-k.",
+    llmCalls: 1,
+  },
+  stance_aware: {
+    label: "Stance-aware (widest pool)",
+    blurb:
+      "Also rewrites the query into supporting/adverse variants and fuses six rankings before the same promotion step.",
+    llmCalls: 2,
+  },
+};
+
 export interface LegalAnalysisResponse {
   query: string;
   answer: string | null;
   cases: CaseResult[];
   latency_ms: number;
   model: string;
+  strategy: RetrievalStrategy;
+  /** "similarity" = cosine (0-1). "rrf" = fusion score; rank-meaningful only, never a similarity. */
+  score_type: string;
   queryId: number;
 }
 
-export function legalAnalysis(input: { query: string; k: number; useLlm: boolean }) {
+export function legalAnalysis(input: {
+  query: string;
+  k: number;
+  useLlm: boolean;
+  strategy: RetrievalStrategy;
+}) {
   return request<LegalAnalysisResponse>("/legal-analysis", {
     method: "POST",
     body: JSON.stringify(input),

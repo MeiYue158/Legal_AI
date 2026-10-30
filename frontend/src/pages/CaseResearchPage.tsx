@@ -5,8 +5,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { legalAnalysis, submitFeedback, ApiError, type LegalAnalysisResponse } from "@/api/client";
+import {
+  legalAnalysis,
+  submitFeedback,
+  ApiError,
+  STRATEGIES,
+  type LegalAnalysisResponse,
+  type RetrievalStrategy,
+} from "@/api/client";
 import { useAuthStore } from "@/store/authStore";
+
+const STRATEGY_ORDER: RetrievalStrategy[] = ["dense", "hybrid", "balanced", "stance_aware"];
 
 export function CaseResearchPage() {
   const navigate = useNavigate();
@@ -15,6 +24,7 @@ export function CaseResearchPage() {
   const [query, setQuery] = useState("");
   const [k, setK] = useState(5);
   const [useLlm, setUseLlm] = useState(false);
+  const [strategy, setStrategy] = useState<RetrievalStrategy>("dense");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<LegalAnalysisResponse | null>(null);
@@ -29,7 +39,7 @@ export function CaseResearchPage() {
     setLoading(true);
     setResult(null);
     try {
-      const res = await legalAnalysis({ query, k, useLlm });
+      const res = await legalAnalysis({ query, k, useLlm, strategy });
       setResult(res);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Search failed");
@@ -82,6 +92,37 @@ export function CaseResearchPage() {
             rows={4}
           />
           <div>
+            <label htmlFor="strategy" className="mb-2 block text-sm font-medium">
+              Retrieval strategy
+            </label>
+            <select
+              id="strategy"
+              value={strategy}
+              onChange={(e) => setStrategy(e.target.value as RetrievalStrategy)}
+              className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              {STRATEGY_ORDER.map((s) => (
+                <option key={s} value={s}>
+                  {STRATEGIES[s].label}
+                  {STRATEGIES[s].llmCalls > 0 ? " — costs credits" : ""}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {STRATEGIES[strategy].blurb}
+              {STRATEGIES[strategy].llmCalls > 0 && (
+                <>
+                  {" "}
+                  <span className="font-medium">
+                    Makes {STRATEGIES[strategy].llmCalls} OpenAI call
+                    {STRATEGIES[strategy].llmCalls > 1 ? "s" : ""} per search — noticeably slower.
+                  </span>
+                </>
+              )}
+            </p>
+          </div>
+
+          <div>
             <label className="mb-2 block text-sm font-medium">Number of cases to retrieve: {k}</label>
             <Slider value={[k]} onValueChange={([v]) => setK(v)} min={1} max={10} step={1} />
           </div>
@@ -99,7 +140,8 @@ export function CaseResearchPage() {
       {result && (
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            Found {result.cases.length} case(s) · {result.latency_ms}ms · model: {result.model}
+            Found {result.cases.length} case(s) · {result.latency_ms}ms ·{" "}
+            {STRATEGIES[result.strategy]?.label ?? result.strategy} · model: {result.model}
           </p>
 
           {result.answer && (
@@ -128,7 +170,9 @@ export function CaseResearchPage() {
                 <CardTitle className="text-base">
                   {c.case_name} — {c.citation}{" "}
                   <span className="font-normal text-muted-foreground">
-                    (similarity: {c.score.toFixed(2)})
+                    {result.score_type === "similarity"
+                      ? `(similarity: ${c.score.toFixed(2)})`
+                      : `(fusion rank score: ${c.score.toFixed(4)})`}
                   </span>
                 </CardTitle>
               </CardHeader>

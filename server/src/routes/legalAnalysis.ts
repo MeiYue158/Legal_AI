@@ -7,11 +7,20 @@ export const legalAnalysisRouter = Router();
 
 const AI_BACKEND_URL = process.env.AI_BACKEND_URL ?? "http://localhost:8000";
 
+const RETRIEVAL_STRATEGIES = ["dense", "hybrid", "balanced", "stance_aware"] as const;
+type RetrievalStrategy = (typeof RETRIEVAL_STRATEGIES)[number];
+
 legalAnalysisRouter.post("/", requireAuth, async (req, res) => {
-  const { query, k, useLlm, documentId } = req.body ?? {};
+  const { query, k, useLlm, documentId, strategy } = req.body ?? {};
   if (!query || typeof query !== "string") {
     return res.status(400).json({ error: "query is required" });
   }
+  if (strategy && !RETRIEVAL_STRATEGIES.includes(strategy as RetrievalStrategy)) {
+    return res.status(400).json({
+      error: `strategy must be one of: ${RETRIEVAL_STRATEGIES.join(", ")}`,
+    });
+  }
+  const retrievalStrategy: RetrievalStrategy = strategy ?? "dense";
 
   const start = Date.now();
   let aiResponse: Response;
@@ -19,7 +28,12 @@ legalAnalysisRouter.post("/", requireAuth, async (req, res) => {
     aiResponse = await fetch(`${AI_BACKEND_URL}/rag/query`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, k: k ?? 5, use_llm: Boolean(useLlm) }),
+      body: JSON.stringify({
+        query,
+        k: k ?? 5,
+        use_llm: Boolean(useLlm),
+        strategy: retrievalStrategy,
+      }),
     });
   } catch (err) {
     console.error("AI backend unreachable:", err);
@@ -51,7 +65,13 @@ legalAnalysisRouter.post("/", requireAuth, async (req, res) => {
 
   await logEvent(req, "rag_query_submitted", {
     page: "case-research",
-    metadata: { useLlm: Boolean(useLlm), k: k ?? 5, latencyMs, queryId },
+    metadata: {
+      useLlm: Boolean(useLlm),
+      k: k ?? 5,
+      strategy: retrievalStrategy,
+      latencyMs,
+      queryId,
+    },
   });
 
   res.json({ ...result, queryId });
